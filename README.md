@@ -1,4 +1,4 @@
-# Go-Pandas
+# gopandas
 
 A Go library for data manipulation and analysis, inspired by Python's pandas library. Provides DataFrame and Series data structures with essential data processing capabilities, all implemented without external dependencies.
 
@@ -14,7 +14,7 @@ A Go library for data manipulation and analysis, inspired by Python's pandas lib
 ## Installation
 
 ```bash
-go get github.com/donghyun/go-pandas
+go get github.com/donghyun/gopandas
 ```
 
 ## Quick Start
@@ -25,7 +25,7 @@ package main
 import (
     "fmt"
     "log"
-    gopandas "github.com/donghyun/go-pandas"
+    gopandas "github.com/donghyun/gopandas"
 )
 
 func main() {
@@ -178,7 +178,7 @@ package main
 import (
     "fmt"
     "log"
-    gopandas "github.com/donghyun/go-pandas"
+    gopandas "github.com/donghyun/gopandas"
 )
 
 func main() {
