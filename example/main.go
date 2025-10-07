@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/donghyun/gopandas"
+	"github.com/donghquinn/gopandas"
 )
 
 func main() {
