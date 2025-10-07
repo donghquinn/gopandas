@@ -14,7 +14,7 @@ A Go library for data manipulation and analysis, inspired by Python's pandas lib
 ## Installation
 
 ```bash
-go get github.com/donghyun/gopandas
+go get github.com/donghquinn/gopandas
 ```
 
 ## Quick Start
@@ -25,7 +25,7 @@ package main
 import (
     "fmt"
     "log"
-    gopandas "github.com/donghyun/gopandas"
+    gopandas "github.com/donghquinn/gopandas"
 )
 
 func main() {
@@ -178,7 +178,7 @@ package main
 import (
     "fmt"
     "log"
-    gopandas "github.com/donghyun/gopandas"
+    gopandas "github.com/donghquinn/gopandas"
 )
 
 func main() {

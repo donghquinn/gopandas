@@ -1,3 +1,3 @@
-module github.com/donghyun/gopandas
+module github.com/donghquinn/gopandas
 
 go 1.21
