@@ -337,6 +337,25 @@ func TestSetColumn(t *testing.T) {
 	}
 }
 
+// TestIlocNegativeEnd covers the negative end-index arm in Iloc.
+func TestIlocNegativeEnd(t *testing.T) {
+	df := makePersonDF() // 3 rows: Alice, Bob, Charlie
+
+	// Iloc(-3, -1) → start=0, end=2 → rows [0,2) = Alice, Bob
+	result, err := df.Iloc(-3, -1)
+	if err != nil {
+		t.Fatalf("Iloc negative end: %v", err)
+	}
+	r, _ := result.Shape()
+	if r != 2 {
+		t.Errorf("Iloc negative end: expected 2 rows, got %d", r)
+	}
+	nameCol, _ := result.GetColumn("name")
+	if nameCol.Values()[0] != "Alice" {
+		t.Errorf("Iloc negative end: expected Alice at row 0, got %v", nameCol.Values()[0])
+	}
+}
+
 func TestString(t *testing.T) {
 	df := makePersonDF()
 	s := df.String()

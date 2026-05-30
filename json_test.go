@@ -175,6 +175,31 @@ func TestJSONNullValues(t *testing.T) {
 
 // ── Tests reading static testdata files ──────────────────────────────────────
 
+// TestReadJSONFloatValues covers normalizeJSONValue's "return f" branch
+// (non-integer float64 values stay as float64 instead of being converted to int).
+func TestReadJSONFloatValues(t *testing.T) {
+	content := `[{"item":"A","price":9.99},{"item":"B","price":4.50}]`
+	f, err := os.CreateTemp("", "test_*.json")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	df, err := ReadJSON(f.Name())
+	if err != nil {
+		t.Fatalf("ReadJSONFloatValues: %v", err)
+	}
+	priceCol, _ := df.GetColumn("price")
+	if _, ok := priceCol.Values()[0].(float64); !ok {
+		t.Errorf("price should be float64, got %T", priceCol.Values()[0])
+	}
+	if priceCol.Values()[0].(float64) != 9.99 {
+		t.Errorf("price[0]: expected 9.99, got %v", priceCol.Values()[0])
+	}
+}
+
 func TestReadJSONFromFile(t *testing.T) {
 	df, err := ReadJSON("testdata/basic.json")
 	if err != nil {

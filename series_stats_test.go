@@ -241,3 +241,97 @@ func TestSeriesValues(t *testing.T) {
 		}
 	}
 }
+
+// TestSeriesMinEmpty covers the error return in Min (all-nil series).
+func TestSeriesMinEmpty(t *testing.T) {
+	s := NewSeries("empty", []interface{}{nil, nil})
+	_, err := s.Min()
+	if err == nil {
+		t.Error("Min of all-nil series: expected error, got nil")
+	}
+}
+
+// TestSeriesStdSingleElement covers the Std error path when Var fails (< 2 values).
+func TestSeriesStdSingleElement(t *testing.T) {
+	s := NewSeries("one", []interface{}{42})
+	_, err := s.Std()
+	if err == nil {
+		t.Error("Std of single-element series: expected error, got nil")
+	}
+}
+
+// TestSeriesMedianWithNils covers the nil-skip (continue) in numericFloats.
+func TestSeriesMedianWithNils(t *testing.T) {
+	s := NewSeries("mixed", []interface{}{1, nil, 3, nil, 5})
+	median, err := s.Median()
+	if err != nil {
+		t.Fatalf("MedianWithNils: %v", err)
+	}
+	if median != 3.0 {
+		t.Errorf("MedianWithNils: expected 3.0, got %v", median)
+	}
+}
+
+// TestSeriesVarWithNils ensures nil values are skipped in Var (also exercises numericFloats nil path).
+func TestSeriesVarWithNils(t *testing.T) {
+	s := NewSeries("mixed", []interface{}{2, nil, 4, nil, 6})
+	v, err := s.Var()
+	if err != nil {
+		t.Fatalf("VarWithNils: %v", err)
+	}
+	if v == 0 {
+		t.Error("VarWithNils: expected non-zero variance")
+	}
+}
+
+// TestSeriesFloat64Ops covers the float64 arm in numericFloats.
+func TestSeriesFloat64Ops(t *testing.T) {
+	s := NewSeries("f64", []interface{}{1.5, 2.5, 3.5, 4.5})
+	sum, err := s.Sum()
+	if err != nil {
+		t.Fatalf("float64 Sum: %v", err)
+	}
+	if sum.(float64) != 12.0 {
+		t.Errorf("float64 Sum: expected 12.0, got %v", sum)
+	}
+	mean, err := s.Mean()
+	if err != nil {
+		t.Fatalf("float64 Mean: %v", err)
+	}
+	if mean != 3.0 {
+		t.Errorf("float64 Mean: expected 3.0, got %v", mean)
+	}
+	median, err := s.Median()
+	if err != nil {
+		t.Fatalf("float64 Median: %v", err)
+	}
+	if median != 3.0 {
+		t.Errorf("float64 Median: expected 3.0, got %v", median)
+	}
+}
+
+// TestSeriesFloat32Ops covers the float32 arm in numericFloats.
+func TestSeriesFloat32Ops(t *testing.T) {
+	s := NewSeries("f32", []interface{}{float32(2), float32(4), float32(6)})
+	sum, err := s.Sum()
+	if err != nil {
+		t.Fatalf("float32 Sum: %v", err)
+	}
+	if sum.(float64) != 12.0 {
+		t.Errorf("float32 Sum: expected 12.0, got %v", sum)
+	}
+	mean, err := s.Mean()
+	if err != nil {
+		t.Fatalf("float32 Mean: %v", err)
+	}
+	if mean != 4.0 {
+		t.Errorf("float32 Mean: expected 4.0, got %v", mean)
+	}
+	std, err := s.Std()
+	if err != nil {
+		t.Fatalf("float32 Std: %v", err)
+	}
+	if std == 0 {
+		t.Error("float32 Std: expected non-zero")
+	}
+}

@@ -243,6 +243,92 @@ func TestSeriesMean(t *testing.T) {
 	}
 }
 
+// TestSortNilValues covers the compareValues(nil, nil) → return 0 branch.
+func TestSortNilValues(t *testing.T) {
+	df := NewDataFrame([]string{"val"})
+	df.AddRow([]interface{}{nil})
+	df.AddRow([]interface{}{nil}) // two nils → compareValues(nil, nil) → return 0
+	df.AddRow([]interface{}{5})
+
+	sorted, err := df.Sort("val", true)
+	if err != nil {
+		t.Fatalf("SortNilValues: %v", err)
+	}
+	r, _ := sorted.Shape()
+	if r != 3 {
+		t.Errorf("SortNilValues: expected 3 rows, got %d", r)
+	}
+}
+
+// TestSeriesMeanError covers the error path in Mean when Sum returns error.
+func TestSeriesMeanError(t *testing.T) {
+	s := NewSeries("strings", []interface{}{"a", "b", "c"})
+	_, err := s.Mean()
+	if err == nil {
+		t.Error("Mean of non-numeric series: expected error, got nil")
+	}
+}
+
+// TestSortEqualValues covers the return-0 (equal) branch in compareValues for int.
+func TestSortEqualIntValues(t *testing.T) {
+	df := NewDataFrame([]string{"name", "score"})
+	df.AddRow([]interface{}{"Alice", 10})
+	df.AddRow([]interface{}{"Bob", 10}) // equal score → compareValues returns 0
+	df.AddRow([]interface{}{"Carol", 20})
+
+	sorted, err := df.Sort("score", true)
+	if err != nil {
+		t.Fatalf("SortEqualInts: %v", err)
+	}
+	r, _ := sorted.Shape()
+	if r != 3 {
+		t.Errorf("SortEqualInts: expected 3 rows, got %d", r)
+	}
+}
+
+// TestSortEqualStringValues covers the return-0 (equal) branch in compareValues for string.
+func TestSortEqualStringValues(t *testing.T) {
+	df := NewDataFrame([]string{"tag", "val"})
+	df.AddRow([]interface{}{"alpha", 1})
+	df.AddRow([]interface{}{"alpha", 2}) // equal tag → compareValues returns 0
+	df.AddRow([]interface{}{"beta", 3})
+
+	sorted, err := df.Sort("tag", true)
+	if err != nil {
+		t.Fatalf("SortEqualStrings: %v", err)
+	}
+	r, _ := sorted.Shape()
+	if r != 3 {
+		t.Errorf("SortEqualStrings: expected 3 rows, got %d", r)
+	}
+}
+
+func TestSortFloat64Column(t *testing.T) {
+	df := NewDataFrame([]string{"label", "score"})
+	df.AddRow([]interface{}{"A", 3.14})
+	df.AddRow([]interface{}{"B", 1.41})
+	df.AddRow([]interface{}{"C", 2.72})
+	df.AddRow([]interface{}{"D", 2.72}) // duplicate → equal float64 branch
+
+	asc, err := df.Sort("score", true)
+	if err != nil {
+		t.Fatalf("Sort float64 asc: %v", err)
+	}
+	scoreCol, _ := asc.GetColumn("score")
+	if scoreCol.Values()[0].(float64) != 1.41 {
+		t.Errorf("Sort float64 asc: expected 1.41 first, got %v", scoreCol.Values()[0])
+	}
+
+	desc, err := df.Sort("score", false)
+	if err != nil {
+		t.Fatalf("Sort float64 desc: %v", err)
+	}
+	scoreCol2, _ := desc.GetColumn("score")
+	if scoreCol2.Values()[0].(float64) != 3.14 {
+		t.Errorf("Sort float64 desc: expected 3.14 first, got %v", scoreCol2.Values()[0])
+	}
+}
+
 func TestSeriesCount(t *testing.T) {
 	// Non-nil count
 	s := NewSeries("nums", []interface{}{1, 2, 3, 4, 5})

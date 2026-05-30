@@ -169,6 +169,59 @@ func TestReadExcelNullsFile(t *testing.T) {
 	}
 }
 
+// TestReadExcelSharedStrings covers loadSharedStrings + getCellValue t="s" branch.
+func TestReadExcelSharedStrings(t *testing.T) {
+	df, err := ReadExcel("testdata/shared_strings.xlsx")
+	if err != nil {
+		t.Fatalf("ReadExcelSharedStrings: %v", err)
+	}
+	rows, cols := df.Shape()
+	if rows != 2 || cols != 2 {
+		t.Errorf("expected (2,2), got (%d,%d)", rows, cols)
+	}
+	if df.Columns()[0] != "name" || df.Columns()[1] != "age" {
+		t.Errorf("unexpected columns: %v", df.Columns())
+	}
+	nameCol, _ := df.GetColumn("name")
+	if nameCol.Values()[0] != "Alice" {
+		t.Errorf("row 0 name: expected Alice, got %v", nameCol.Values()[0])
+	}
+	if nameCol.Values()[1] != "Bob" {
+		t.Errorf("row 1 name: expected Bob, got %v", nameCol.Values()[1])
+	}
+}
+
+// TestReadExcelCustomSheet covers the sheetName branch in readXLSX.
+func TestReadExcelCustomSheet(t *testing.T) {
+	df, err := ReadExcel("testdata/sheet2.xlsx", "sheet2")
+	if err != nil {
+		t.Fatalf("ReadExcelCustomSheet: %v", err)
+	}
+	rows, cols := df.Shape()
+	if rows != 2 || cols != 2 {
+		t.Errorf("expected (2,2), got (%d,%d)", rows, cols)
+	}
+	if df.Columns()[0] != "x" || df.Columns()[1] != "y" {
+		t.Errorf("unexpected columns: %v", df.Columns())
+	}
+}
+
+// TestReadExcelInvalidXLSSignature covers the !validSignature path in parseXLS.
+func TestReadExcelInvalidXLSSignature(t *testing.T) {
+	f, err := os.CreateTemp("", "bad_*.xls")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer os.Remove(f.Name())
+	f.Write([]byte{0xFF, 0xFE, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05})
+	f.Close()
+
+	_, err = ReadExcel(f.Name())
+	if err == nil {
+		t.Error("expected error for invalid XLS signature, got nil")
+	}
+}
+
 func TestReadExcelXLSFile(t *testing.T) {
 	df, err := ReadExcel("testdata/basic.xls")
 	if err != nil {
