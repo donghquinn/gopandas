@@ -1,0 +1,7 @@
+[
+  {"name": "Alice", "age": 25, "city": "New York"},
+  {"name": "Bob", "age": 30, "city": "London"},
+  {"name": "Charlie", "age": 35, "city": "Paris"},
+  {"name": "Dave", "age": 28, "city": "Tokyo"},
+  {"name": "Eve", "age": 22, "city": "Berlin"}
+]
