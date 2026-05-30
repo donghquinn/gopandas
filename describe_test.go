@@ -104,6 +104,84 @@ func TestDescribeSkipsStringColumns(t *testing.T) {
 	}
 }
 
+// TestDescribeWithNullsInNumericColumn covers the nil-skip (continue) in collectNumeric.
+func TestDescribeWithNullsInNumericColumn(t *testing.T) {
+	df := NewDataFrame([]string{"val"})
+	df.AddRow([]interface{}{10})
+	df.AddRow([]interface{}{nil}) // nil in numeric column → collectNumeric skips it
+	df.AddRow([]interface{}{20})
+	df.AddRow([]interface{}{30})
+
+	desc := df.Describe()
+	r, _ := desc.Shape()
+	if r != 8 {
+		t.Errorf("Describe with nulls: expected 8 rows, got %d", r)
+	}
+	// count should be 3 (nil excluded)
+	valCol, _ := desc.GetColumn("val")
+	if valCol.Values()[0].(float64) != 3.0 {
+		t.Errorf("Describe with nulls count: expected 3.0, got %v", valCol.Values()[0])
+	}
+}
+
+// TestDescribeFloat64Values covers the float64 arm in collectNumeric.
+func TestDescribeFloat64Values(t *testing.T) {
+	df := NewDataFrame([]string{"val"})
+	for _, v := range []interface{}{1.0, 2.0, 3.0, 4.0, 5.0} {
+		df.AddRow([]interface{}{v})
+	}
+	desc := df.Describe()
+	r, _ := desc.Shape()
+	if r != 8 {
+		t.Errorf("Describe float64: expected 8 stat rows, got %d", r)
+	}
+	valCol, _ := desc.GetColumn("val")
+	if valCol.Values()[0].(float64) != 5.0 { // count
+		t.Errorf("Describe float64 count: expected 5.0, got %v", valCol.Values()[0])
+	}
+}
+
+// TestDescribeFloat32Values covers the float32 arm in collectNumeric.
+func TestDescribeFloat32Values(t *testing.T) {
+	df := NewDataFrame([]string{"val"})
+	for _, v := range []interface{}{float32(2), float32(4), float32(6)} {
+		df.AddRow([]interface{}{v})
+	}
+	desc := df.Describe()
+	r, _ := desc.Shape()
+	if r != 8 {
+		t.Errorf("Describe float32: expected 8 stat rows, got %d", r)
+	}
+	valCol, _ := desc.GetColumn("val")
+	if valCol.Values()[0].(float64) != 3.0 { // count=3
+		t.Errorf("Describe float32 count: expected 3.0, got %v", valCol.Values()[0])
+	}
+}
+
+// TestDescribeSingleRow covers the percentile64 hi>=n edge case (single element).
+func TestDescribeSingleRow(t *testing.T) {
+	df := NewDataFrame([]string{"val"})
+	df.AddRow([]interface{}{42})
+
+	desc := df.Describe()
+	r, _ := desc.Shape()
+	if r != 8 {
+		t.Errorf("Describe single row: expected 8 stat rows, got %d", r)
+	}
+	valCol, _ := desc.GetColumn("val")
+	// std of a single value must be 0 (len < 2 guard)
+	std := valCol.Values()[2].(float64)
+	if std != 0.0 {
+		t.Errorf("Describe single row std: expected 0.0, got %v", std)
+	}
+	// min and max both equal 42
+	min := valCol.Values()[3].(float64)
+	max := valCol.Values()[7].(float64)
+	if min != 42.0 || max != 42.0 {
+		t.Errorf("Describe single row min/max: expected 42/42, got %v/%v", min, max)
+	}
+}
+
 func TestDescribeStatRowOrder(t *testing.T) {
 	df := NewDataFrame([]string{"val"})
 	for _, v := range []interface{}{1, 2, 3, 4, 5} {

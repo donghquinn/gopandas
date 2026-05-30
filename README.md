@@ -1,5 +1,8 @@
 # gopandas
 
+[![Test](https://github.com/donghquinn/gopandas/actions/workflows/test.yml/badge.svg)](https://github.com/donghquinn/gopandas/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/donghquinn/gopandas/branch/main/graph/badge.svg)](https://codecov.io/gh/donghquinn/gopandas)
+
 A Go library for data manipulation and analysis, inspired by Python's pandas. Provides `DataFrame` and `Series` data structures with data processing, statistics, and file I/O — all implemented without external dependencies.
 
 ## Features
