@@ -172,3 +172,56 @@ func TestJSONNullValues(t *testing.T) {
 		t.Errorf("JSONNullValues: score[0] expected nil, got %v", scores[0])
 	}
 }
+
+// ── Tests reading static testdata files ──────────────────────────────────────
+
+func TestReadJSONFromFile(t *testing.T) {
+	df, err := ReadJSON("testdata/basic.json")
+	if err != nil {
+		t.Fatalf("ReadJSONFromFile: %v", err)
+	}
+	rows, cols := df.Shape()
+	if rows != 5 || cols != 3 {
+		t.Errorf("expected (5,3), got (%d,%d)", rows, cols)
+	}
+	// Column order from JSON maps is non-deterministic; verify by name.
+	for _, want := range []string{"name", "age", "city"} {
+		if _, err := df.GetColumn(want); err != nil {
+			t.Errorf("missing column %q", want)
+		}
+	}
+	nameCol, _ := df.GetColumn("name")
+	if nameCol.Values()[0] != "Alice" {
+		t.Errorf("row 0 name: expected Alice, got %v", nameCol.Values()[0])
+	}
+	ageCol, _ := df.GetColumn("age")
+	if ageCol.Values()[0].(int) != 25 {
+		t.Errorf("row 0 age: expected 25, got %v", ageCol.Values()[0])
+	}
+}
+
+func TestReadJSONNullsFromFile(t *testing.T) {
+	// null_values.json: name / score / grade
+	// Alice, null, A
+	// Bob, 85, null
+	// Charlie, 90, B
+	df, err := ReadJSON("testdata/null_values.json")
+	if err != nil {
+		t.Fatalf("ReadJSONNullsFromFile: %v", err)
+	}
+	rows, cols := df.Shape()
+	if rows != 3 || cols != 3 {
+		t.Errorf("expected (3,3), got (%d,%d)", rows, cols)
+	}
+	scoreCol, _ := df.GetColumn("score")
+	if scoreCol.Values()[0] != nil {
+		t.Errorf("Alice score: expected nil, got %v", scoreCol.Values()[0])
+	}
+	if scoreCol.Values()[1].(int) != 85 {
+		t.Errorf("Bob score: expected 85, got %v", scoreCol.Values()[1])
+	}
+	gradeCol, _ := df.GetColumn("grade")
+	if gradeCol.Values()[1] != nil {
+		t.Errorf("Bob grade: expected nil, got %v", gradeCol.Values()[1])
+	}
+}
