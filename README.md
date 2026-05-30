@@ -1,15 +1,17 @@
 # gopandas
 
-A Go library for data manipulation and analysis, inspired by Python's pandas library. Provides DataFrame and Series data structures with essential data processing capabilities, all implemented without external dependencies.
+A Go library for data manipulation and analysis, inspired by Python's pandas. Provides `DataFrame` and `Series` data structures with data processing, statistics, and file I/O — all implemented without external dependencies.
 
 ## Features
 
-- **DataFrame and Series** - Core data structures for handling structured data
-- **CSV Support** - Read and write CSV files with automatic type inference
-- **Excel Support** - Read Excel files (.xlsx) without external dependencies
-- **Data Operations** - Filter, select, sort, and group data
-- **Statistical Functions** - Calculate sum, mean, count, and more
-- **Zero Dependencies** - Pure Go implementation
+- **DataFrame and Series** — core data structures for structured data
+- **File I/O** — read/write CSV, Excel (.xlsx/.xls), and JSON
+- **Data manipulation** — filter, select, sort, group, merge, concat
+- **Missing value handling** — DropNA, FillNA, IsNull, NotNull
+- **Statistics** — sum, mean, std, variance, median, min, max, percentiles
+- **Column operations** — rename, drop, add, apply transformations
+- **Row access** — Head, Tail, Iloc (slice/position-based)
+- **Zero external dependencies** — pure Go standard library
 
 ## Installation
 
@@ -29,18 +31,14 @@ import (
 )
 
 func main() {
-    // Read CSV file
     df, err := gopandas.ReadCSV("data.csv")
     if err != nil {
         log.Fatal(err)
     }
 
-    // Display basic info
     rows, cols := df.Shape()
     fmt.Printf("Shape: (%d, %d)\n", rows, cols)
     fmt.Printf("Columns: %v\n", df.Columns())
-    
-    // Show first 5 rows
     fmt.Print(df.Head(5))
 }
 ```
@@ -52,21 +50,18 @@ func main() {
 A 2-dimensional labeled data structure with columns of potentially different types.
 
 ```go
-// Create a new DataFrame
 df := gopandas.NewDataFrame([]string{"name", "age", "city"})
 
-// Add rows
 df.AddRow([]interface{}{"Alice", 25, "New York"})
 df.AddRow([]interface{}{"Bob", 30, "London"})
+df.AddRow([]interface{}{"Charlie", 35, "Paris"})
 
-// Get shape
-rows, cols := df.Shape()
+rows, cols := df.Shape()       // (3, 3)
+columns := df.Columns()        // ["name", "age", "city"]
 
-// Get column names
-columns := df.Columns()
-
-// Display first n rows
-head := df.Head(3)
+fmt.Print(df.Head(2))          // first 2 rows
+fmt.Print(df.Tail(2))          // last 2 rows
+fmt.Print(df)                  // all rows as a table
 ```
 
 ### Series
@@ -74,100 +69,240 @@ head := df.Head(3)
 A 1-dimensional labeled array capable of holding any data type.
 
 ```go
-// Create a new Series
-data := []interface{}{1, 2, 3, 4, 5}
-series := gopandas.NewSeries("numbers", data)
+s := gopandas.NewSeries("scores", []interface{}{85, 92, 78, 95, 88})
 
-// Statistical operations
-sum, _ := series.Sum()      // 15.0
-mean, _ := series.Mean()    // 3.0
-count := series.Count()     // 5
+sum, _    := s.Sum()     // 438.0
+mean, _   := s.Mean()    // 87.6
+count     := s.Count()   // 5
+max, _    := s.Max()     // 95
+min, _    := s.Min()     // 78
+median, _ := s.Median()  // 88.0
+std, _    := s.Std()     // sample standard deviation
+v, _      := s.Var()     // sample variance
 ```
 
 ## File I/O
 
-### CSV Operations
+### CSV
 
 ```go
-// Read CSV with default options (header=true, delimiter=',')
+// Read (auto-detects types: int, float64, bool, string)
 df, err := gopandas.ReadCSV("data.csv")
 
-// Read CSV with custom options
-df, err := gopandas.ReadCSV("data.csv", 
-    gopandas.WithHeader(false),
-    gopandas.WithDelimiter(';'))
-
-// Write to CSV
-err = df.ToCSV("output.csv")
-
-// Write CSV with custom options
-err = df.ToCSV("output.csv",
+// Read with options
+df, err := gopandas.ReadCSV("data.tsv",
     gopandas.WithHeader(true),
-    gopandas.WithDelimiter(','))
+    gopandas.WithDelimiter('\t'))
+
+// Write
+err = df.ToCSV("output.csv")
+err = df.ToCSV("output.tsv", gopandas.WithDelimiter('\t'))
 ```
 
-### Excel Operations
+### Excel
 
 ```go
-// Read Excel file (first sheet)
+// Read first sheet
 df, err := gopandas.ReadExcel("data.xlsx")
 
-// Read specific sheet
+// Read a specific sheet
 df, err := gopandas.ReadExcel("data.xlsx", "Sheet2")
+
+// Both .xlsx and .xls formats are supported
+df, err := gopandas.ReadExcel("legacy.xls")
+```
+
+### JSON
+
+JSON files must be an array of objects. Keys from all records are used as columns.
+
+```go
+// Read
+df, err := gopandas.ReadJSON("data.json")
+
+// Write
+err = df.ToJSON("output.json")
+```
+
+Example JSON format:
+```json
+[
+  {"name": "Alice", "age": 25, "city": "New York"},
+  {"name": "Bob",   "age": 30, "city": "London"}
+]
 ```
 
 ## Data Manipulation
 
-### Filtering
+### Filter
 
 ```go
-// Filter rows based on condition
-filtered := df.Filter(func(row []interface{}) bool {
-    age := row[1].(int)
-    return age >= 30
+// Keep rows where age >= 30
+adults := df.Filter(func(row []interface{}) bool {
+    return row[1].(int) >= 30
 })
 ```
 
-### Column Selection
+### Select
 
 ```go
 // Select specific columns
-subset, err := df.Select("name", "age")
+subset, err := df.Select("name", "salary")
 ```
 
-### Sorting
+### Sort
 
 ```go
-// Sort by column (ascending)
-sorted, err := df.Sort("age", true)
-
-// Sort by column (descending)
-sorted, err := df.Sort("salary", false)
+sorted, err := df.Sort("salary", false) // descending
+sorted, err := df.Sort("name", true)    // ascending
 ```
 
-### Grouping
+### GroupBy
 
 ```go
-// Group by column
 groups, err := df.GroupBy("department")
-
-// Iterate through groups
-for key, group := range groups {
-    fmt.Printf("Group %v:\n", key)
-    fmt.Print(group)
+for dept, group := range groups {
+    rows, _ := group.Shape()
+    fmt.Printf("%s: %d rows\n", dept, rows)
 }
 ```
 
-### Column Operations
+### Apply (row-wise)
+
+```go
+// Double every salary value
+updated := df.Apply(func(row []interface{}) []interface{} {
+    newRow := make([]interface{}, len(row))
+    copy(newRow, row)
+    newRow[3] = row[3].(int) * 2
+    return newRow
+})
+```
+
+## Column Operations
 
 ```go
 // Get a column as Series
-ageColumn, err := df.GetColumn("age")
+ages, err := df.GetColumn("age")
 
-// Calculate statistics
-avgAge, err := ageColumn.Mean()
-totalAge, err := ageColumn.Sum()
-count := ageColumn.Count()
+// Rename columns
+df2 := df.Rename(map[string]string{"age": "years", "name": "full_name"})
+
+// Drop columns
+df3, err := df.Drop("city", "zip")
+
+// Add or overwrite a column
+err = df.SetColumn("senior", []interface{}{false, true, true})
+
+// Get column type map
+types := df.Dtypes()
+// map["name":"string", "age":"int", ...]
+```
+
+## Row Access
+
+```go
+// First / last n rows
+top3    := df.Head(3)
+bottom3 := df.Tail(3)
+
+// Slice by integer range [start, end) — supports negative indices
+middle, err := df.Iloc(2, 5)
+last2, err  := df.Iloc(-2, -1)
+
+// Specific row positions
+picked, err := df.IlocRows(0, 3, 7)
+
+// Row index values
+idx := df.Index()
+```
+
+## Combining DataFrames
+
+### Concat (vertical stack)
+
+All DataFrames must have the same columns in the same order.
+
+```go
+combined, err := gopandas.Concat(df1, df2, df3)
+```
+
+### Merge (join)
+
+Supports `"inner"`, `"left"`, `"right"`, and `"outer"` joins on a common column.
+
+```go
+// Inner join
+result, err := employees.Merge(departments, "dept_id", "inner")
+
+// Left join — all rows from left, matched rows from right
+result, err := orders.Merge(customers, "customer_id", "left")
+
+// Outer join — all rows from both sides
+result, err := df1.Merge(df2, "id", "outer")
+```
+
+When both DataFrames have a non-key column with the same name, the right-side column is suffixed with `_right`.
+
+## Missing Values
+
+```go
+// DataFrame
+clean   := df.DropNA()           // drop rows containing any nil
+filled  := df.FillNA(0)          // replace nil with 0
+hasNull := df.HasNA()            // true if any nil exists
+
+// Series
+nullMask := s.IsNull()           // []bool — true where nil
+notNull  := s.NotNull()          // []bool — true where not nil
+clean    := s.DropNA()           // new Series with nils removed
+filled   := s.FillNA(0)         // new Series with nils replaced
+```
+
+## Statistics
+
+### Series
+
+```go
+s := gopandas.NewSeries("data", []interface{}{2, 4, 4, 4, 5, 5, 7, 9})
+
+max, _    := s.Max()             // 9
+min, _    := s.Min()             // 2
+median, _ := s.Median()          // 4.5
+std, _    := s.Std()             // sample std (ddof=1)
+v, _      := s.Var()             // sample variance (ddof=1)
+
+unique    := s.Unique()          // []interface{}{2, 4, 5, 7, 9}
+n         := s.NUnique()         // 5
+counts    := s.ValueCounts()     // map[interface{}]int{4:3, 5:2, ...}
+
+// Apply a function element-wise
+doubled := s.Apply(func(v interface{}) interface{} {
+    return v.(int) * 2
+})
+
+// Accessor helpers
+name   := s.Name()    // "data"
+values := s.Values()  // []interface{}{...}
+```
+
+### DataFrame.Describe
+
+Returns a summary DataFrame with 8 statistics for every numeric column.
+
+```go
+desc := df.Describe()
+fmt.Print(desc)
+// stat           age            salary
+// -----------------------------------------------
+// count          4              4
+// mean           29.5           63750
+// std            4.43           12500.0
+// min            25             50000
+// 25%            27.25          53750
+// 50%            29.5           65000
+// 75%            31.75          72500
+// max            35             80000
 ```
 
 ## Complete Example
@@ -182,99 +317,148 @@ import (
 )
 
 func main() {
-    // Create sample data
-    df := gopandas.NewDataFrame([]string{"name", "age", "department", "salary"})
-    df.AddRow([]interface{}{"Alice", 25, "Engineering", 70000})
-    df.AddRow([]interface{}{"Bob", 30, "Sales", 50000})
-    df.AddRow([]interface{}{"Charlie", 35, "Engineering", 80000})
-    df.AddRow([]interface{}{"Diana", 28, "Marketing", 55000})
+    // Build a DataFrame manually
+    df := gopandas.NewDataFrame([]string{"name", "dept", "salary"})
+    df.AddRow([]interface{}{"Alice",   "Engineering", 80000})
+    df.AddRow([]interface{}{"Bob",     "Sales",       50000})
+    df.AddRow([]interface{}{"Charlie", "Engineering", 90000})
+    df.AddRow([]interface{}{"Diana",   "Sales",       55000})
+    df.AddRow([]interface{}{"Eve",     "Marketing",   nil})
 
-    // Display basic information
+    // Basic info
     rows, cols := df.Shape()
-    fmt.Printf("Dataset shape: (%d, %d)\n", rows, cols)
-    fmt.Print(df)
+    fmt.Printf("Shape: (%d, %d)\n", rows, cols)
 
-    // Filter engineering employees
-    engineers := df.Filter(func(row []interface{}) bool {
-        return row[2].(string) == "Engineering"
-    })
-    fmt.Println("\nEngineering employees:")
-    fmt.Print(engineers)
+    // Drop rows with missing data
+    clean := df.DropNA()
 
-    // Calculate average salary
-    salaryColumn, _ := df.GetColumn("salary")
-    avgSalary, _ := salaryColumn.Mean()
-    fmt.Printf("\nAverage salary: $%.2f\n", avgSalary)
+    // Statistics summary
+    fmt.Print(clean.Describe())
 
-    // Group by department
-    groups, _ := df.GroupBy("department")
-    fmt.Println("\nEmployees by department:")
-    for dept, group := range groups {
-        rows, _ := group.Shape()
-        fmt.Printf("%s: %d employees\n", dept, rows)
+    // Filter and sort
+    highEarners, _ := clean.Filter(func(row []interface{}) bool {
+        return row[2].(int) >= 70000
+    }), nil
+    sorted, _ := highEarners.Sort("salary", false)
+    fmt.Print(sorted)
+
+    // Group by department and compute mean salary
+    groups, _ := clean.GroupBy("dept")
+    for dept, g := range groups {
+        col, _ := g.GetColumn("salary")
+        avg, _ := col.Mean()
+        fmt.Printf("%s avg salary: $%.0f\n", dept, avg)
     }
 
-    // Save to CSV
-    err := df.ToCSV("employees.csv")
+    // Merge with a departments DataFrame
+    depts := gopandas.NewDataFrame([]string{"dept", "head_count"})
+    depts.AddRow([]interface{}{"Engineering", 120})
+    depts.AddRow([]interface{}{"Sales",       80})
+
+    merged, err := clean.Merge(depts, "dept", "left")
     if err != nil {
         log.Fatal(err)
     }
-    fmt.Println("Data saved to employees.csv")
+    fmt.Print(merged)
+
+    // Save results
+    merged.ToCSV("result.csv")
+    merged.ToJSON("result.json")
 }
 ```
 
 ## API Reference
 
-### DataFrame Methods
+### DataFrame
 
-- `NewDataFrame(columns []string) *DataFrame` - Create new DataFrame
-- `Shape() (int, int)` - Get number of rows and columns
-- `Columns() []string` - Get column names
-- `Head(n int) *DataFrame` - Get first n rows
-- `AddRow(row []interface{}) error` - Add a new row
-- `GetColumn(name string) (*Series, error)` - Get column as Series
-- `Filter(predicate func([]interface{}) bool) *DataFrame` - Filter rows
-- `Select(columns ...string) (*DataFrame, error)` - Select columns
-- `Sort(column string, ascending bool) (*DataFrame, error)` - Sort by column
-- `GroupBy(column string) (map[interface{}]*DataFrame, error)` - Group by column
-- `ToCSV(filename string, options ...CSVOption) error` - Write to CSV
+| Method | Description |
+|--------|-------------|
+| `NewDataFrame(columns []string) *DataFrame` | Create a new empty DataFrame |
+| `AddRow(row []interface{}) error` | Append a row |
+| `Shape() (int, int)` | Row and column count |
+| `Columns() []string` | Column names |
+| `Index() []interface{}` | Row index values |
+| `Dtypes() map[string]string` | Inferred Go type per column |
+| `Head(n int) *DataFrame` | First n rows |
+| `Tail(n int) *DataFrame` | Last n rows |
+| `Iloc(start, end int) (*DataFrame, error)` | Rows by position range [start, end) |
+| `IlocRows(indices ...int) (*DataFrame, error)` | Rows at specific positions |
+| `Filter(fn func([]interface{}) bool) *DataFrame` | Keep rows matching predicate |
+| `Select(columns ...string) (*DataFrame, error)` | Select columns by name |
+| `Drop(columns ...string) (*DataFrame, error)` | Remove columns |
+| `Rename(mapping map[string]string) *DataFrame` | Rename columns |
+| `SetColumn(name string, values []interface{}) error` | Add or replace a column |
+| `GetColumn(name string) (*Series, error)` | Column as Series |
+| `Sort(column string, ascending bool) (*DataFrame, error)` | Sort rows by column |
+| `GroupBy(column string) (map[interface{}]*DataFrame, error)` | Group rows by column value |
+| `Apply(fn func([]interface{}) []interface{}) *DataFrame` | Apply function to each row |
+| `Describe() *DataFrame` | Summary statistics for numeric columns |
+| `DropNA() *DataFrame` | Remove rows containing nil |
+| `FillNA(value interface{}) *DataFrame` | Replace nil values |
+| `HasNA() bool` | True if any nil exists |
+| `String() string` | Tabular string representation |
+| `ToCSV(filename string, options ...CSVOption) error` | Write to CSV |
+| `ToJSON(filename string) error` | Write to JSON |
 
-### Series Methods
+### Package-level functions
 
-- `NewSeries(name string, data []interface{}) *Series` - Create new Series
-- `Sum() (interface{}, error)` - Calculate sum
-- `Mean() (float64, error)` - Calculate mean
-- `Count() int` - Count non-null values
+| Function | Description |
+|----------|-------------|
+| `NewDataFrame(columns []string) *DataFrame` | Create DataFrame |
+| `NewSeries(name string, data []interface{}) *Series` | Create Series |
+| `Concat(dfs ...*DataFrame) (*DataFrame, error)` | Stack DataFrames vertically |
+| `ReadCSV(filename string, options ...CSVOption) (*DataFrame, error)` | Read CSV |
+| `ReadExcel(filename string, sheetName ...string) (*DataFrame, error)` | Read Excel |
+| `ReadJSON(filename string) (*DataFrame, error)` | Read JSON array-of-objects |
 
-### File I/O Functions
+### DataFrame.Merge
 
-- `ReadCSV(filename string, options ...CSVOption) (*DataFrame, error)` - Read CSV
-- `ReadExcel(filename string, sheetName ...string) (*DataFrame, error)` - Read Excel
+```go
+func (df *DataFrame) Merge(right *DataFrame, on string, how string) (*DataFrame, error)
+```
+
+`how` must be one of `"inner"`, `"left"`, `"right"`, or `"outer"`.
+
+### Series
+
+| Method | Description |
+|--------|-------------|
+| `Name() string` | Series name |
+| `Values() []interface{}` | Raw data slice |
+| `Count() int` | Non-nil value count |
+| `Sum() (interface{}, error)` | Sum of numeric values |
+| `Mean() (float64, error)` | Arithmetic mean |
+| `Median() (float64, error)` | Median |
+| `Std() (float64, error)` | Sample standard deviation (ddof=1) |
+| `Var() (float64, error)` | Sample variance (ddof=1) |
+| `Max() (interface{}, error)` | Maximum value |
+| `Min() (interface{}, error)` | Minimum value |
+| `Unique() []interface{}` | Distinct values, first-seen order |
+| `NUnique() int` | Count of distinct non-nil values |
+| `ValueCounts() map[interface{}]int` | Frequency of each value |
+| `Apply(fn func(interface{}) interface{}) *Series` | Element-wise transform |
+| `IsNull() []bool` | Nil mask |
+| `NotNull() []bool` | Non-nil mask |
+| `DropNA() *Series` | Remove nil values |
+| `FillNA(value interface{}) *Series` | Replace nil values |
 
 ### CSV Options
 
-- `WithHeader(hasHeader bool)` - Set header option
-- `WithDelimiter(delimiter rune)` - Set delimiter
+| Option | Default | Description |
+|--------|---------|-------------|
+| `WithHeader(bool)` | `true` | First row is a header |
+| `WithDelimiter(rune)` | `','` | Field separator |
 
 ## Testing
 
-Run tests:
-
 ```bash
-go test
-```
-
-Run example:
-
-```bash
-cd example
-go run main.go
+go test ./...
 ```
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome. Please open an issue or submit a pull request.
