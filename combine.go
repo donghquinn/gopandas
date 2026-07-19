@@ -21,7 +21,14 @@ func Concat(dfs ...*DataFrame) (*DataFrame, error) {
 		}
 	}
 
+	totalRows := 0
+	for _, df := range dfs {
+		totalRows += len(df.data)
+	}
+
 	result := NewDataFrame(base)
+	result.data = make([][]interface{}, 0, totalRows)
+	result.index = make([]interface{}, 0, totalRows)
 	for _, df := range dfs {
 		for _, row := range df.data {
 			result.data = append(result.data, row)

@@ -15,21 +15,25 @@ import (
 
 type ExcelReader struct {
 	zipReader *zip.ReadCloser
-	strings   map[int]string
+	strings   []string
+}
+
+type xlsxCell struct {
+	Reference string `xml:"r,attr"`
+	Type      string `xml:"t,attr"`
+	Value     string `xml:"v"`
+	InlineStr struct {
+		Text string `xml:"t"`
+	} `xml:"is"`
+}
+
+type xlsxRow struct {
+	Cells []xlsxCell `xml:"c"`
 }
 
 type worksheet struct {
 	SheetData struct {
-		Rows []struct {
-			Cells []struct {
-				Reference string `xml:"r,attr"`
-				Type      string `xml:"t,attr"`
-				Value     string `xml:"v"`
-				InlineStr struct {
-					Text string `xml:"t"`
-				} `xml:"is"`
-			} `xml:"c"`
-		} `xml:"row"`
+		Rows []xlsxRow `xml:"row"`
 	} `xml:"sheetData"`
 }
 
@@ -61,7 +65,6 @@ func readXLSX(filename string, sheetName ...string) (*DataFrame, error) {
 
 	excelReader := &ExcelReader{
 		zipReader: reader,
-		strings:   make(map[int]string),
 	}
 
 	if err := excelReader.loadSharedStrings(); err != nil {
@@ -77,13 +80,7 @@ func readXLSX(filename string, sheetName ...string) (*DataFrame, error) {
 }
 
 func readXLS(filename string, sheetName ...string) (*DataFrame, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open XLS file: %w", err)
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read XLS file: %w", err)
 	}
@@ -110,6 +107,7 @@ func (er *ExcelReader) loadSharedStrings() error {
 				return err
 			}
 
+			er.strings = make([]string, len(ss.Items))
 			for i, item := range ss.Items {
 				er.strings[i] = item.Text
 			}
@@ -154,70 +152,63 @@ func (er *ExcelReader) readWorksheet(sheetName string) (*DataFrame, error) {
 		return nil, fmt.Errorf("worksheet is empty")
 	}
 
-	maxCols := 0
-	for _, row := range ws.SheetData.Rows {
-		if len(row.Cells) > maxCols {
-			maxCols = len(row.Cells)
+	rows := make([][]string, len(ws.SheetData.Rows))
+	for i, wsRow := range ws.SheetData.Rows {
+		row := make([]string, len(wsRow.Cells))
+		for j, cell := range wsRow.Cells {
+			row[j] = er.getCellValue(cell)
 		}
+		rows[i] = row
 	}
 
-	columns := make([]string, maxCols)
-	if len(ws.SheetData.Rows) > 0 {
-		firstRow := ws.SheetData.Rows[0]
-		for i, cell := range firstRow.Cells {
-			if i < maxCols {
-				columns[i] = er.getCellValue(cell)
-			}
-		}
-		for i := len(firstRow.Cells); i < maxCols; i++ {
-			columns[i] = fmt.Sprintf("col_%d", i)
-		}
-	} else {
-		for i := range columns {
-			columns[i] = fmt.Sprintf("col_%d", i)
-		}
-	}
-
-	df := NewDataFrame(columns)
-
-	for i := 1; i < len(ws.SheetData.Rows); i++ {
-		row := make([]interface{}, maxCols)
-		cells := ws.SheetData.Rows[i].Cells
-
-		for j := 0; j < maxCols; j++ {
-			if j < len(cells) {
-				value := er.getCellValue(cells[j])
-				row[j] = inferType(value)
-			} else {
-				row[j] = nil
-			}
-		}
-
-		df.AddRow(row)
-	}
-
-	return df, nil
+	return dataFrameFromStringRows(rows), nil
 }
 
-func (er *ExcelReader) getCellValue(cell struct {
-	Reference string `xml:"r,attr"`
-	Type      string `xml:"t,attr"`
-	Value     string `xml:"v"`
-	InlineStr struct {
-		Text string `xml:"t"`
-	} `xml:"is"`
-}) string {
+func (er *ExcelReader) getCellValue(cell xlsxCell) string {
 	if cell.Type == "s" {
-		if idx, err := strconv.Atoi(cell.Value); err == nil {
-			if str, exists := er.strings[idx]; exists {
-				return str
-			}
+		if idx, err := strconv.Atoi(cell.Value); err == nil && idx >= 0 && idx < len(er.strings) {
+			return er.strings[idx]
 		}
 	} else if cell.Type == "inlineStr" {
 		return cell.InlineStr.Text
 	}
 
 	return cell.Value
+}
+
+// dataFrameFromStringRows builds a DataFrame from raw string rows. The first
+// row provides column names; ragged rows are padded with generated names/nils.
+func dataFrameFromStringRows(rows [][]string) *DataFrame {
+	maxCols := 0
+	for _, row := range rows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+
+	columns := make([]string, maxCols)
+	if len(rows) > 0 {
+		copy(columns, rows[0])
+		for i := len(rows[0]); i < maxCols; i++ {
+			columns[i] = fmt.Sprintf("col_%d", i)
+		}
+	}
+
+	df := NewDataFrame(columns)
+	if len(rows) > 1 {
+		df.data = make([][]interface{}, 0, len(rows)-1)
+		df.index = make([]interface{}, 0, len(rows)-1)
+	}
+
+	for i := 1; i < len(rows); i++ {
+		row := make([]interface{}, maxCols)
+		for j, val := range rows[i] {
+			row[j] = inferType(val)
+		}
+		df.AddRow(row)
+	}
+
+	return df
 }
 
 type xlsRecord struct {
@@ -262,7 +253,6 @@ func parseXLS(data []byte, sheetName ...string) (*DataFrame, error) {
 
 	reader.Seek(0, 0)
 
-	var records []xlsRecord
 	var strings []string
 	var rows [][]string
 
@@ -282,15 +272,13 @@ func parseXLS(data []byte, sheetName ...string) (*DataFrame, error) {
 			}
 		}
 
-		records = append(records, record)
-
 		switch record.Type {
 		case 0x00FC:
 			if str := parseSST(record.Data); str != "" {
 				strings = append(strings, str)
 			}
 		case 0x0201:
-			if row := parseRow(record.Data, strings); row != nil && len(row) > 0 {
+			if row := parseRow(record.Data, strings); len(row) > 0 {
 				rows = append(rows, row)
 			}
 		}
@@ -300,44 +288,7 @@ func parseXLS(data []byte, sheetName ...string) (*DataFrame, error) {
 		return nil, fmt.Errorf("no data found in XLS file")
 	}
 
-	maxCols := 0
-	for _, row := range rows {
-		if len(row) > maxCols {
-			maxCols = len(row)
-		}
-	}
-
-	columns := make([]string, maxCols)
-	if len(rows) > 0 {
-		for i, cell := range rows[0] {
-			if i < maxCols {
-				columns[i] = cell
-			}
-		}
-		for i := len(rows[0]); i < maxCols; i++ {
-			columns[i] = fmt.Sprintf("col_%d", i)
-		}
-	} else {
-		for i := range columns {
-			columns[i] = fmt.Sprintf("col_%d", i)
-		}
-	}
-
-	df := NewDataFrame(columns)
-
-	for i := 1; i < len(rows); i++ {
-		row := make([]interface{}, maxCols)
-		for j := 0; j < maxCols; j++ {
-			if j < len(rows[i]) {
-				row[j] = inferType(rows[i][j])
-			} else {
-				row[j] = nil
-			}
-		}
-		df.AddRow(row)
-	}
-
-	return df, nil
+	return dataFrameFromStringRows(rows), nil
 }
 
 func parseSST(data []byte) string {
@@ -466,7 +417,6 @@ func parseOLEXLS(data []byte, sheetName ...string) (*DataFrame, error) {
 func parseBIFFData(data []byte, sheetName ...string) (*DataFrame, error) {
 	reader := bytes.NewReader(data)
 
-	var records []xlsRecord
 	var strings []string
 	var rows [][]string
 
@@ -486,67 +436,27 @@ func parseBIFFData(data []byte, sheetName ...string) (*DataFrame, error) {
 			}
 		}
 
-		records = append(records, record)
-
 		switch record.Type {
 		case 0x00FC: // SST
 			if str := parseSST(record.Data); str != "" {
 				strings = append(strings, str)
 			}
 		case 0x0201: // BLANK
-			if row := parseRow(record.Data, strings); row != nil && len(row) > 0 {
+			if row := parseRow(record.Data, strings); len(row) > 0 {
 				rows = append(rows, row)
 			}
 		case 0x0203: // NUMBER
-			if row := parseNumberRecord(record.Data); row != nil && len(row) > 0 {
+			if row := parseNumberRecord(record.Data); len(row) > 0 {
 				rows = append(rows, row)
 			}
 		case 0x0204: // LABEL
-			if row := parseLabelRecord(record.Data, strings); row != nil && len(row) > 0 {
+			if row := parseLabelRecord(record.Data, strings); len(row) > 0 {
 				rows = append(rows, row)
 			}
 		}
 	}
 
-	// Create DataFrame from parsed data
-	maxCols := 0
-	for _, row := range rows {
-		if len(row) > maxCols {
-			maxCols = len(row)
-		}
-	}
-
-	columns := make([]string, maxCols)
-	if len(rows) > 0 {
-		for i, cell := range rows[0] {
-			if i < maxCols {
-				columns[i] = cell
-			}
-		}
-		for i := len(rows[0]); i < maxCols; i++ {
-			columns[i] = fmt.Sprintf("col_%d", i)
-		}
-	} else {
-		for i := range columns {
-			columns[i] = fmt.Sprintf("col_%d", i)
-		}
-	}
-
-	df := NewDataFrame(columns)
-
-	for i := 1; i < len(rows); i++ {
-		row := make([]interface{}, maxCols)
-		for j := 0; j < maxCols; j++ {
-			if j < len(rows[i]) {
-				row[j] = inferType(rows[i][j])
-			} else {
-				row[j] = nil
-			}
-		}
-		df.AddRow(row)
-	}
-
-	return df, nil
+	return dataFrameFromStringRows(rows), nil
 }
 
 func parseNumberRecord(data []byte) []string {

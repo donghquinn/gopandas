@@ -13,21 +13,58 @@ import (
 // ── XLSX ────────────────────────────────────────────────────────────────────
 
 func createXLSX(filename, sheetXML string) error {
+	return createXLSXMulti(filename, map[string]string{
+		"xl/worksheets/sheet1.xml": sheetXML,
+	})
+}
+
+func createXLSXMulti(filename string, entries map[string]string) error {
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
-
-	fw, err := w.Create("xl/worksheets/sheet1.xml")
-	if err != nil {
-		return fmt.Errorf("create sheet entry: %w", err)
-	}
-	if _, err := fw.Write([]byte(sheetXML)); err != nil {
-		return fmt.Errorf("write sheet xml: %w", err)
+	for path, content := range entries {
+		fw, err := w.Create(path)
+		if err != nil {
+			return fmt.Errorf("create %s: %w", path, err)
+		}
+		if _, err := fw.Write([]byte(content)); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
 	}
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("close zip: %w", err)
 	}
 	return os.WriteFile(filename, buf.Bytes(), 0644)
 }
+
+// sharedStringsXML: sharedStrings.xml without namespace so Go's xml.Unmarshal matches.
+// Indices: 0=name, 1=age, 2=Alice, 3=Bob.
+const sharedStringsXML = `<?xml version="1.0" encoding="UTF-8"?>
+<sst>
+  <si><t>name</t></si>
+  <si><t>age</t></si>
+  <si><t>Alice</t></si>
+  <si><t>Bob</t></si>
+</sst>`
+
+// sharedStringsSheetXML: worksheet using t="s" cells that reference sharedStrings.
+const sharedStringsSheetXML = `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet>
+  <sheetData>
+    <row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row>
+    <row><c t="s"><v>2</v></c><c><v>25</v></c></row>
+    <row><c t="s"><v>3</v></c><c><v>30</v></c></row>
+  </sheetData>
+</worksheet>`
+
+// sheet2SheetXML: a worksheet at xl/worksheets/sheet2.xml for custom-sheet-name tests.
+const sheet2SheetXML = `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet>
+  <sheetData>
+    <row><c t="inlineStr"><is><t>x</t></is></c><c t="inlineStr"><is><t>y</t></is></c></row>
+    <row><c><v>1</v></c><c><v>10</v></c></row>
+    <row><c><v>2</v></c><c><v>20</v></c></row>
+  </sheetData>
+</worksheet>`
 
 // basicSheetXML: 5 data rows, columns name/age/city.
 // Strings use inlineStr so no sharedStrings.xml is needed.
@@ -179,5 +216,16 @@ func main() {
 	}
 	must("basic.xls", createXLS("testdata/basic.xls", xlsStrings, xlsRows))
 
-	fmt.Println("generated: testdata/basic.xlsx  testdata/nulls.xlsx  testdata/basic.xls")
+	// shared_strings.xlsx — worksheet uses t="s" cells + xl/sharedStrings.xml
+	must("shared_strings.xlsx", createXLSXMulti("testdata/shared_strings.xlsx", map[string]string{
+		"xl/worksheets/sheet1.xml": sharedStringsSheetXML,
+		"xl/sharedStrings.xml":     sharedStringsXML,
+	}))
+
+	// sheet2.xlsx — data is in xl/worksheets/sheet2.xml (custom sheet name)
+	must("sheet2.xlsx", createXLSXMulti("testdata/sheet2.xlsx", map[string]string{
+		"xl/worksheets/sheet2.xml": sheet2SheetXML,
+	}))
+
+	fmt.Println("generated: testdata/basic.xlsx  testdata/nulls.xlsx  testdata/basic.xls  testdata/shared_strings.xlsx  testdata/sheet2.xlsx")
 }

@@ -14,8 +14,7 @@ func (df *DataFrame) Describe() *DataFrame {
 	for i, col := range df.columns {
 		for _, row := range df.data {
 			if row[i] != nil {
-				switch row[i].(type) {
-				case int, float64, float32:
+				if _, ok := toFloat64(row[i]); ok {
 					numericCols = append(numericCols, col)
 					numericIndices = append(numericIndices, i)
 				}
@@ -29,17 +28,24 @@ func (df *DataFrame) Describe() *DataFrame {
 
 	stats := []string{"count", "mean", "std", "min", "25%", "50%", "75%", "max"}
 
-	for _, stat := range stats {
+	// Collect and sort each numeric column once, then compute all stats from it.
+	colStats := make([][]float64, len(numericIndices))
+	for j, colIdx := range numericIndices {
+		values := collectNumeric(df, colIdx)
+		sort.Float64s(values)
+		colStats[j] = computeStats(values)
+	}
+
+	result.data = make([][]interface{}, len(stats))
+	result.index = make([]interface{}, len(stats))
+	for i, stat := range stats {
 		row := make([]interface{}, len(allCols))
 		row[0] = stat
-
-		for j, colIdx := range numericIndices {
-			values := collectNumeric(df, colIdx)
-			row[j+1] = computeStat(stat, values)
+		for j := range numericIndices {
+			row[j+1] = colStats[j][i]
 		}
-
-		result.data = append(result.data, row)
-		result.index = append(result.index, stat)
+		result.data[i] = row
+		result.index[i] = stat
 	}
 
 	return result
@@ -48,56 +54,41 @@ func (df *DataFrame) Describe() *DataFrame {
 func collectNumeric(df *DataFrame, colIdx int) []float64 {
 	values := make([]float64, 0, len(df.data))
 	for _, row := range df.data {
-		v := row[colIdx]
-		if v == nil {
-			continue
-		}
-		switch n := v.(type) {
-		case int:
-			values = append(values, float64(n))
-		case float64:
-			values = append(values, n)
-		case float32:
-			values = append(values, float64(n))
+		if f, ok := toFloat64(row[colIdx]); ok {
+			values = append(values, f)
 		}
 	}
 	return values
 }
 
-func computeStat(stat string, values []float64) float64 {
-	if len(values) == 0 {
-		return 0
+// computeStats returns count, mean, std, min, 25%, 50%, 75%, max for sorted values.
+func computeStats(sorted []float64) []float64 {
+	if len(sorted) == 0 {
+		return make([]float64, 8)
 	}
-	switch stat {
-	case "count":
-		return float64(len(values))
-	case "mean":
-		return mean64(values)
-	case "std":
-		if len(values) < 2 {
-			return 0
-		}
-		m := mean64(values)
+
+	m := mean64(sorted)
+
+	var std float64
+	if len(sorted) >= 2 {
 		var ss float64
-		for _, v := range values {
+		for _, v := range sorted {
 			d := v - m
 			ss += d * d
 		}
-		return math.Sqrt(ss / float64(len(values)-1))
-	case "min":
-		s := sorted64(values)
-		return s[0]
-	case "25%":
-		return percentile64(sorted64(values), 25)
-	case "50%":
-		return percentile64(sorted64(values), 50)
-	case "75%":
-		return percentile64(sorted64(values), 75)
-	case "max":
-		s := sorted64(values)
-		return s[len(s)-1]
+		std = math.Sqrt(ss / float64(len(sorted)-1))
 	}
-	return 0
+
+	return []float64{
+		float64(len(sorted)),
+		m,
+		std,
+		sorted[0],
+		percentile64(sorted, 25),
+		percentile64(sorted, 50),
+		percentile64(sorted, 75),
+		sorted[len(sorted)-1],
+	}
 }
 
 func mean64(values []float64) float64 {
@@ -109,13 +100,6 @@ func mean64(values []float64) float64 {
 		sum += v
 	}
 	return sum / float64(len(values))
-}
-
-func sorted64(values []float64) []float64 {
-	cp := make([]float64, len(values))
-	copy(cp, values)
-	sort.Float64s(cp)
-	return cp
 }
 
 func percentile64(sorted []float64, p float64) float64 {

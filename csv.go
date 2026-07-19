@@ -13,32 +13,32 @@ func ReadCSV(filename string, options ...CSVOption) (*DataFrame, error) {
 		HasHeader: true,
 		Delimiter: ',',
 	}
-	
+
 	for _, option := range options {
 		option(config)
 	}
-	
+
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
-	
+
 	reader := csv.NewReader(file)
 	reader.Comma = config.Delimiter
-	
+
 	records, err := reader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CSV: %w", err)
 	}
-	
+
 	if len(records) == 0 {
 		return nil, fmt.Errorf("CSV file is empty")
 	}
-	
+
 	var columns []string
 	var dataStart int
-	
+
 	if config.HasHeader {
 		columns = records[0]
 		dataStart = 1
@@ -49,9 +49,11 @@ func ReadCSV(filename string, options ...CSVOption) (*DataFrame, error) {
 		}
 		dataStart = 0
 	}
-	
+
 	df := NewDataFrame(columns)
-	
+	df.data = make([][]interface{}, 0, len(records)-dataStart)
+	df.index = make([]interface{}, 0, len(records)-dataStart)
+
 	for i := dataStart; i < len(records); i++ {
 		row := make([]interface{}, len(records[i]))
 		for j, val := range records[i] {
@@ -59,7 +61,7 @@ func ReadCSV(filename string, options ...CSVOption) (*DataFrame, error) {
 		}
 		df.AddRow(row)
 	}
-	
+
 	return df, nil
 }
 
@@ -68,27 +70,27 @@ func (df *DataFrame) ToCSV(filename string, options ...CSVOption) error {
 		HasHeader: true,
 		Delimiter: ',',
 	}
-	
+
 	for _, option := range options {
 		option(config)
 	}
-	
+
 	file, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer file.Close()
-	
+
 	writer := csv.NewWriter(file)
 	writer.Comma = config.Delimiter
 	defer writer.Flush()
-	
+
 	if config.HasHeader {
 		if err := writer.Write(df.columns); err != nil {
 			return fmt.Errorf("failed to write header: %w", err)
 		}
 	}
-	
+
 	for _, row := range df.data {
 		stringRow := make([]string, len(row))
 		for i, val := range row {
@@ -98,7 +100,7 @@ func (df *DataFrame) ToCSV(filename string, options ...CSVOption) error {
 			return fmt.Errorf("failed to write row: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -123,22 +125,32 @@ func WithDelimiter(delimiter rune) CSVOption {
 
 func inferType(value string) interface{} {
 	value = strings.TrimSpace(value)
-	
+
 	if value == "" {
 		return nil
 	}
-	
+
+	// Fast path: values that cannot start a number, bool, NaN, or Inf are
+	// returned as-is, skipping the parse attempts (and their error allocations).
+	switch c := value[0]; {
+	case c >= '0' && c <= '9', c == '+', c == '-', c == '.',
+		c == 't', c == 'T', c == 'f', c == 'F',
+		c == 'n', c == 'N', c == 'i', c == 'I':
+	default:
+		return value
+	}
+
 	if intVal, err := strconv.Atoi(value); err == nil {
 		return intVal
 	}
-	
+
 	if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
 		return floatVal
 	}
-	
+
 	if boolVal, err := strconv.ParseBool(value); err == nil {
 		return boolVal
 	}
-	
+
 	return value
 }
