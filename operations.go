@@ -7,163 +7,147 @@ import (
 
 func (df *DataFrame) Filter(predicate func(row []interface{}) bool) *DataFrame {
 	result := NewDataFrame(df.columns)
-	
+
 	for i, row := range df.data {
 		if predicate(row) {
 			result.data = append(result.data, row)
 			result.index = append(result.index, df.index[i])
 		}
 	}
-	
+
 	return result
 }
 
 func (df *DataFrame) Select(columns ...string) (*DataFrame, error) {
 	colIndices := make([]int, len(columns))
-	
+
 	for i, col := range columns {
-		found := false
-		for j, dfCol := range df.columns {
-			if dfCol == col {
-				colIndices[i] = j
-				found = true
-				break
-			}
+		idx, err := findColIndex(df.columns, col)
+		if err != nil {
+			return nil, err
 		}
-		if !found {
-			return nil, fmt.Errorf("column '%s' not found", col)
-		}
+		colIndices[i] = idx
 	}
-	
+
 	result := NewDataFrame(columns)
-	
+	result.data = make([][]interface{}, len(df.data))
+	result.index = make([]interface{}, len(df.data))
+
 	for i, row := range df.data {
-		newRow := make([]interface{}, len(columns))
+		newRow := make([]interface{}, len(colIndices))
 		for j, colIdx := range colIndices {
 			newRow[j] = row[colIdx]
 		}
-		result.data = append(result.data, newRow)
-		result.index = append(result.index, df.index[i])
+		result.data[i] = newRow
+		result.index[i] = df.index[i]
 	}
-	
+
 	return result, nil
 }
 
 func (df *DataFrame) Sort(column string, ascending bool) (*DataFrame, error) {
-	colIndex := -1
-	for i, col := range df.columns {
-		if col == column {
-			colIndex = i
-			break
-		}
+	colIndex, err := findColIndex(df.columns, column)
+	if err != nil {
+		return nil, err
 	}
-	
-	if colIndex == -1 {
-		return nil, fmt.Errorf("column '%s' not found", column)
+
+	// Sort a permutation so data and index stay aligned.
+	perm := make([]int, len(df.data))
+	keys := make([]interface{}, len(df.data))
+	for i, row := range df.data {
+		perm[i] = i
+		keys[i] = row[colIndex]
 	}
-	
-	result := NewDataFrame(df.columns)
-	result.data = make([][]interface{}, len(df.data))
-	result.index = make([]interface{}, len(df.index))
-	
-	copy(result.data, df.data)
-	copy(result.index, df.index)
-	
-	sort.Slice(result.data, func(i, j int) bool {
-		valI := result.data[i][colIndex]
-		valJ := result.data[j][colIndex]
-		
-		comp := compareValues(valI, valJ)
+
+	sort.Slice(perm, func(i, j int) bool {
+		comp := compareValues(keys[perm[i]], keys[perm[j]])
 		if ascending {
 			return comp < 0
 		}
 		return comp > 0
 	})
-	
+
+	result := NewDataFrame(df.columns)
+	result.data = make([][]interface{}, len(df.data))
+	result.index = make([]interface{}, len(df.index))
+	for i, p := range perm {
+		result.data[i] = df.data[p]
+		result.index[i] = df.index[p]
+	}
+
 	return result, nil
 }
 
 func (df *DataFrame) GroupBy(column string) (map[interface{}]*DataFrame, error) {
-	colIndex := -1
-	for i, col := range df.columns {
-		if col == column {
-			colIndex = i
-			break
-		}
+	colIndex, err := findColIndex(df.columns, column)
+	if err != nil {
+		return nil, err
 	}
-	
-	if colIndex == -1 {
-		return nil, fmt.Errorf("column '%s' not found", column)
-	}
-	
+
 	groups := make(map[interface{}]*DataFrame)
-	
+
 	for i, row := range df.data {
 		key := row[colIndex]
-		
-		if groups[key] == nil {
-			groups[key] = NewDataFrame(df.columns)
+
+		group := groups[key]
+		if group == nil {
+			group = NewDataFrame(df.columns)
+			groups[key] = group
 		}
-		
-		groups[key].data = append(groups[key].data, row)
-		groups[key].index = append(groups[key].index, df.index[i])
+
+		group.data = append(group.data, row)
+		group.index = append(group.index, df.index[i])
 	}
-	
+
 	return groups, nil
+}
+
+// sumCount returns the sum and count of numeric (int, float32, float64) values in one pass.
+func (s *Series) sumCount() (float64, int) {
+	var sum float64
+	count := 0
+
+	for _, val := range s.data {
+		switch v := val.(type) {
+		case int:
+			sum += float64(v)
+			count++
+		case float64:
+			sum += v
+			count++
+		case float32:
+			sum += float64(v)
+			count++
+		}
+	}
+
+	return sum, count
 }
 
 func (s *Series) Sum() (interface{}, error) {
 	if len(s.data) == 0 {
 		return nil, fmt.Errorf("series is empty")
 	}
-	
-	var sum float64
-	count := 0
-	
-	for _, val := range s.data {
-		if val != nil {
-			switch v := val.(type) {
-			case int:
-				sum += float64(v)
-				count++
-			case float64:
-				sum += v
-				count++
-			case float32:
-				sum += float64(v)
-				count++
-			}
-		}
-	}
-	
+
+	sum, count := s.sumCount()
 	if count == 0 {
 		return nil, fmt.Errorf("no numeric values found")
 	}
-	
+
 	return sum, nil
 }
 
 func (s *Series) Mean() (float64, error) {
-	sum, err := s.Sum()
-	if err != nil {
-		return 0, err
+	if len(s.data) == 0 {
+		return 0, fmt.Errorf("series is empty")
 	}
-	
-	count := 0
-	for _, val := range s.data {
-		if val != nil {
-			switch val.(type) {
-			case int, float64, float32:
-				count++
-			}
-		}
-	}
-	
+
+	sum, count := s.sumCount()
 	if count == 0 {
 		return 0, fmt.Errorf("no numeric values found")
 	}
-	
-	return sum.(float64) / float64(count), nil
+
+	return sum / float64(count), nil
 }
 
 func (s *Series) Count() int {
@@ -186,36 +170,44 @@ func compareValues(a, b interface{}) int {
 	if b == nil {
 		return 1
 	}
-	
-	switch va := a.(type) {
-	case int:
-		if vb, ok := b.(int); ok {
-			if va < vb {
-				return -1
-			} else if va > vb {
-				return 1
-			}
-			return 0
+
+	// Numeric values compare across int/float32/float64.
+	fa, aNum := toFloat64(a)
+	fb, bNum := toFloat64(b)
+	if aNum && bNum {
+		switch {
+		case fa < fb:
+			return -1
+		case fa > fb:
+			return 1
 		}
-	case float64:
-		if vb, ok := b.(float64); ok {
-			if va < vb {
-				return -1
-			} else if va > vb {
-				return 1
-			}
-			return 0
-		}
-	case string:
+		return 0
+	}
+
+	if va, ok := a.(string); ok {
 		if vb, ok := b.(string); ok {
-			if va < vb {
+			switch {
+			case va < vb:
 				return -1
-			} else if va > vb {
+			case va > vb:
 				return 1
 			}
 			return 0
 		}
 	}
-	
+
 	return 0
+}
+
+// toFloat64 converts numeric values (int, float32, float64) to float64.
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	}
+	return 0, false
 }

@@ -78,16 +78,9 @@ func (df *DataFrame) AddRow(row []interface{}) error {
 }
 
 func (df *DataFrame) GetColumn(name string) (*Series, error) {
-	colIndex := -1
-	for i, col := range df.columns {
-		if col == name {
-			colIndex = i
-			break
-		}
-	}
-
-	if colIndex == -1 {
-		return nil, fmt.Errorf("column '%s' not found", name)
+	colIndex, err := findColIndex(df.columns, name)
+	if err != nil {
+		return nil, err
 	}
 
 	columnData := make([]interface{}, len(df.data))
@@ -99,23 +92,25 @@ func (df *DataFrame) GetColumn(name string) (*Series, error) {
 }
 
 func (df *DataFrame) String() string {
-	result := ""
+	var sb strings.Builder
+	sb.Grow((len(df.data) + 2) * (len(df.columns)*15 + 1))
 
 	for _, col := range df.columns {
-		result += fmt.Sprintf("%-15s", col)
+		fmt.Fprintf(&sb, "%-15s", col)
 	}
-	result += "\n"
+	sb.WriteByte('\n')
 
-	result += strings.Repeat("-", len(df.columns)*15) + "\n"
+	sb.WriteString(strings.Repeat("-", len(df.columns)*15))
+	sb.WriteByte('\n')
 
 	for _, row := range df.data {
 		for _, val := range row {
-			result += fmt.Sprintf("%-15v", val)
+			fmt.Fprintf(&sb, "%-15v", val)
 		}
-		result += "\n"
+		sb.WriteByte('\n')
 	}
 
-	return result
+	return sb.String()
 }
 
 func (df *DataFrame) Tail(n int) *DataFrame {
@@ -167,13 +162,15 @@ func (df *DataFrame) Drop(columns ...string) (*DataFrame, error) {
 	}
 
 	result := NewDataFrame(newCols)
+	result.data = make([][]interface{}, len(df.data))
+	result.index = make([]interface{}, len(df.data))
 	for i, row := range df.data {
 		newRow := make([]interface{}, len(keepIndices))
 		for j, idx := range keepIndices {
 			newRow[j] = row[idx]
 		}
-		result.data = append(result.data, newRow)
-		result.index = append(result.index, df.index[i])
+		result.data[i] = newRow
+		result.index[i] = df.index[i]
 	}
 	return result, nil
 }
@@ -207,6 +204,8 @@ func (df *DataFrame) Iloc(start, end int) (*DataFrame, error) {
 func (df *DataFrame) IlocRows(indices ...int) (*DataFrame, error) {
 	rows := len(df.data)
 	result := NewDataFrame(df.columns)
+	result.data = make([][]interface{}, 0, len(indices))
+	result.index = make([]interface{}, 0, len(indices))
 	for _, idx := range indices {
 		if idx < 0 || idx >= rows {
 			return nil, fmt.Errorf("index %d out of range", idx)
@@ -220,9 +219,11 @@ func (df *DataFrame) IlocRows(indices ...int) (*DataFrame, error) {
 // Apply applies fn to each row and returns a new DataFrame with the results.
 func (df *DataFrame) Apply(fn func(row []interface{}) []interface{}) *DataFrame {
 	result := NewDataFrame(df.columns)
+	result.data = make([][]interface{}, len(df.data))
+	result.index = make([]interface{}, len(df.data))
 	for i, row := range df.data {
-		result.data = append(result.data, fn(row))
-		result.index = append(result.index, df.index[i])
+		result.data[i] = fn(row)
+		result.index[i] = df.index[i]
 	}
 	return result
 }

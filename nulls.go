@@ -22,6 +22,8 @@ func (df *DataFrame) DropNA() *DataFrame {
 // FillNA returns a new DataFrame with nil values replaced by value.
 func (df *DataFrame) FillNA(value interface{}) *DataFrame {
 	result := NewDataFrame(df.columns)
+	result.data = make([][]interface{}, len(df.data))
+	result.index = make([]interface{}, len(df.data))
 	for i, row := range df.data {
 		newRow := make([]interface{}, len(row))
 		for j, val := range row {
@@ -31,8 +33,8 @@ func (df *DataFrame) FillNA(value interface{}) *DataFrame {
 				newRow[j] = val
 			}
 		}
-		result.data = append(result.data, newRow)
-		result.index = append(result.index, df.index[i])
+		result.data[i] = newRow
+		result.index[i] = df.index[i]
 	}
 	return result
 }

@@ -36,6 +36,8 @@ func ReadJSON(filename string) (*DataFrame, error) {
 	}
 
 	df := NewDataFrame(cols)
+	df.data = make([][]interface{}, 0, len(records))
+	df.index = make([]interface{}, 0, len(records))
 	for _, rec := range records {
 		row := make([]interface{}, len(cols))
 		for i, col := range cols {

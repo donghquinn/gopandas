@@ -135,16 +135,8 @@ func (s *Series) Values() []interface{} {
 func (s *Series) numericFloats() []float64 {
 	values := make([]float64, 0, len(s.data))
 	for _, val := range s.data {
-		if val == nil {
-			continue
-		}
-		switch v := val.(type) {
-		case int:
-			values = append(values, float64(v))
-		case float64:
-			values = append(values, v)
-		case float32:
-			values = append(values, float64(v))
+		if f, ok := toFloat64(val); ok {
+			values = append(values, f)
 		}
 	}
 	return values
